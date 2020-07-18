@@ -8,6 +8,7 @@ import com.atguigu.GmallConstants
 import com.atguigu.bean.StartUpLog
 import com.atguigu.handler.DauHandler
 import com.atguigu.utils.MyKafkaUtil
+import org.apache.hadoop.hbase.HBaseConfiguration
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.spark.SparkConf
 import org.apache.spark.streaming.dstream.{DStream, InputDStream}
@@ -76,12 +77,15 @@ object DauApp {
 
     //8.数据写入HBase(Phoenix)
     filteredByGroupDStream.cache()
-    filteredByGroupDStream.foreachRDD(rdd=>{
-
+    filteredByGroupDStream.foreachRDD(rdd => {
+      rdd.saveToPhoenix("GMALL200213_DAU",
+        classOf[StartUpLog].getDeclaredFields.map(_.getName.toUpperCase()),
+        HBaseConfiguration.create(),
+        Some("hadoop102,hadoop103,hadoop104:2181"))
     })
 
     //打印
-    //startUpLogDStream.print()
+    filteredByGroupDStream.print()
 
     //开启任务
     ssc.start()
