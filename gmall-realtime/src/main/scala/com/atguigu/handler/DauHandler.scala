@@ -2,6 +2,7 @@ package com.atguigu.handler
 
 import java.{lang, util}
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.util.Date
 
 import com.atguigu.bean.StartUpLog
@@ -12,6 +13,41 @@ import org.apache.spark.streaming.dstream.DStream
 import redis.clients.jedis.Jedis
 
 object DauHandler {
+
+  /**
+    * 去重2--->根据Mid_date做同批次去重
+    *
+    * @param filteredByRedisLogDStream 根据Redis跨批次去重后的结果
+    * @return
+    */
+  def filterByGroup(filteredByRedisLogDStream: DStream[StartUpLog]): DStream[StartUpLog] = {
+
+    //1.调整数据结构
+    val midDateToLogDStream: DStream[(String, StartUpLog)] = filteredByRedisLogDStream.map(startUpLog => {
+      (s"${startUpLog.mid}_${startUpLog.logDate}", startUpLog)
+    })
+
+    //2.分组
+    val midDateToLogIterDStream: DStream[(String, Iterable[StartUpLog])] = midDateToLogDStream.groupByKey()
+
+    //3.取value中时间戳最小的一条
+    val midDateToLogList: DStream[(String, List[StartUpLog])] = midDateToLogIterDStream.mapValues(iter => {
+      //按照时间戳排序并取第一条
+      iter.toList.sortWith(_.ts < _.ts).take(1)
+    })
+
+    //4.压平
+    midDateToLogList.flatMap { case (midDate, list) =>
+      list
+    }
+
+    //合并34步骤
+    //    midDateToLogIterDStream.flatMap { case (midDate, iter) =>
+    //      iter.toList.sortWith(_.ts < _.ts).take(1)
+    //    }
+
+  }
+
 
   private val sdf: SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd")
 
@@ -24,32 +60,32 @@ object DauHandler {
   def filterByRedis(startUpLogDStream: DStream[StartUpLog], ssc: StreamingContext): DStream[StartUpLog] = {
 
     //方案一：单条过滤
-    val value1: DStream[StartUpLog] = startUpLogDStream.filter(startUpLog => {
-
-      //a.获取Redis连接
-      val jedisClient: Jedis = RedisUtil.getJedisClient
-
-      //b.单条过滤(判断是否在Redis中已经存在)
-      val boolean: lang.Boolean = !jedisClient.sismember(s"DAU:${startUpLog.logDate}", startUpLog.mid)
-
-      //c.归还连接
-      jedisClient.close()
-
-      //d.将结果返回
-      boolean
-    })
-
-    //方案二：一个分区获取一次Redis连接
-    val value2: DStream[StartUpLog] = startUpLogDStream.mapPartitions(iter => {
-      //a.分区内获取Redis连接
-      val jedisClient: Jedis = RedisUtil.getJedisClient
-      //b.分区内过滤数据
-      val logs: Iterator[StartUpLog] = iter.filter(startUpLog => !jedisClient.sismember(s"DAU:${startUpLog.logDate}", startUpLog.mid))
-      //c.归还连接
-      jedisClient.close()
-      //d.返回结果
-      logs
-    })
+    //    val value1: DStream[StartUpLog] = startUpLogDStream.filter(startUpLog => {
+    //
+    //      //a.获取Redis连接
+    //      val jedisClient: Jedis = RedisUtil.getJedisClient
+    //
+    //      //b.单条过滤(判断是否在Redis中已经存在)
+    //      val boolean: lang.Boolean = !jedisClient.sismember(s"DAU:${startUpLog.logDate}", startUpLog.mid)
+    //
+    //      //c.归还连接
+    //      jedisClient.close()
+    //
+    //      //d.将结果返回
+    //      boolean
+    //    })
+    //
+    //    //方案二：一个分区获取一次Redis连接
+    //    val value2: DStream[StartUpLog] = startUpLogDStream.mapPartitions(iter => {
+    //      //a.分区内获取Redis连接
+    //      val jedisClient: Jedis = RedisUtil.getJedisClient
+    //      //b.分区内过滤数据
+    //      val logs: Iterator[StartUpLog] = iter.filter(startUpLog => !jedisClient.sismember(s"DAU:${startUpLog.logDate}", startUpLog.mid))
+    //      //c.归还连接
+    //      jedisClient.close()
+    //      //d.返回结果
+    //      logs
+    //    })
 
     //方案三：每个批次获取一次Redis连接
     val value3: DStream[StartUpLog] = startUpLogDStream.transform(rdd => {
@@ -60,6 +96,10 @@ object DauHandler {
 
       //b.使用当天时间
       val date: String = sdf.format(new Date(System.currentTimeMillis()))
+
+      //JAVA8
+      //      val date: String = LocalDate.now().toString
+
       val uids: util.Set[String] = jedisClient.smembers(s"DAU:$date")
 
       //c.广播uids
@@ -72,8 +112,8 @@ object DauHandler {
       rdd.filter(startUpLogDStream => !uidsBC.value.contains(startUpLogDStream.mid))
     })
 
-    value1
-    value2
+    //    value1
+    //    value2
     value3
   }
 
