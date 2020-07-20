@@ -5,6 +5,8 @@ import com.alibaba.otter.canal.client.CanalConnector;
 import com.alibaba.otter.canal.client.CanalConnectors;
 import com.alibaba.otter.canal.protocol.CanalEntry;
 import com.alibaba.otter.canal.protocol.Message;
+import com.atguigu.GmallConstants;
+import com.atguigu.utils.MyKafkaSender;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 
@@ -69,14 +71,10 @@ public class CanalClient {
                         } catch (InvalidProtocolBufferException e) {
                             e.printStackTrace();
                         }
-
                     }
                 }
-
             }
-
         }
-
     }
 
     //根据表名以及eventType,处理rowDatasList
@@ -95,11 +93,12 @@ public class CanalClient {
                     result.put(column.getName(), column.getValue());
                 }
 
-                //单条数据打印
-                System.out.println(result.toString());
+                //单条数据打印并发送至Kafka
+                String msg = result.toString();
+                System.out.println(msg);
+                MyKafkaSender.send(GmallConstants.ORDER_INFO, msg);
             }
         }
-
     }
 
 
