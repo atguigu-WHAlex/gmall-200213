@@ -7,10 +7,10 @@
     </select>
 
     <select id="selectDauTotalHourMap" resultMap="dauTotalHour">
-        select LOGHOUR lh, count(*) ct from GMALL200213_DAU where  LOGDATE=#{date}
+        select LOGHOUR lh, count(*) ct from GMALL200213_DAU where LOGDATE=#{date}
         group by LOGHOUR
     </select>
-
     <resultMap id="dauTotalHour" type="java.util.Map" autoMapping="true">
     </resultMap>
+
 </mapper>

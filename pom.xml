@@ -21,6 +21,7 @@
         <module>gmall-mocker</module>
         <module>gmall-logger</module>
         <module>gmall-realtime</module>
+        <module>gmall-canal</module>
     </modules>
 
     <properties>

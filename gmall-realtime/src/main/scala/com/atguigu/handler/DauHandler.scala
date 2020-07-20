@@ -98,8 +98,7 @@ object DauHandler {
       val date: String = sdf.format(new Date(System.currentTimeMillis()))
 
       //JAVA8
-      //      val date: String = LocalDate.now().toString
-
+      //val date: String = LocalDate.now().toString
       val uids: util.Set[String] = jedisClient.smembers(s"DAU:$date")
 
       //c.广播uids
