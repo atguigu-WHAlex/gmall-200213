@@ -12,6 +12,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 
 import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.Random;
 
 public class CanalClient {
 
@@ -107,6 +108,11 @@ public class CanalClient {
             }
             //单条数据打印并发送至Kafka
             String msg = result.toString();
+            try {
+                Thread.sleep(new Random().nextInt(5) * 1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             System.out.println(msg);
             MyKafkaSender.send(topic, msg);
         }

@@ -55,12 +55,12 @@ object GmvApp {
     orderInfoDStream.cache()
 
     //5.写入Phoenix
-    orderInfoDStream.foreachRDD(rdd => {
-      rdd.saveToPhoenix("GMALL200213_ORDER_INFO",
-        classOf[OrderInfo].getDeclaredFields.map(_.getName.toUpperCase()),
-        HBaseConfiguration.create(),
-        Some("hadoop102,hadoop103,hadoop104:2181"))
-    })
+//    orderInfoDStream.foreachRDD(rdd => {
+//      rdd.saveToPhoenix("GMALL200213_ORDER_INFO",
+//        classOf[OrderInfo].getDeclaredFields.map(_.getName.toUpperCase()),
+//        HBaseConfiguration.create(),
+//        Some("hadoop102,hadoop103,hadoop104:2181"))
+//    })
 
     //测试打印
     orderInfoDStream.print()
