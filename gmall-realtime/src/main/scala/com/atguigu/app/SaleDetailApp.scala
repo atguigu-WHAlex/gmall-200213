@@ -1,11 +1,13 @@
 package com.atguigu.app
 
+import java.text.SimpleDateFormat
 import java.util
+import java.util.Date
 
 import com.alibaba.fastjson.JSON
 import com.atguigu.GmallConstants
 import com.atguigu.bean.{OrderDetail, OrderInfo, SaleDetail, UserInfo}
-import com.atguigu.utils.{MyKafkaUtil, RedisUtil}
+import com.atguigu.utils.{MyEsUtil, MyKafkaUtil, RedisUtil}
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.spark.SparkConf
 import org.apache.spark.streaming.dstream.{DStream, InputDStream}
@@ -27,7 +29,6 @@ object SaleDetailApp {
     //2.读取Kafka三个主题的数据
     val orderInfoKafkaDStream: InputDStream[ConsumerRecord[String, String]] = MyKafkaUtil.getKafkaDStream(Set(GmallConstants.ORDER_INFO), ssc)
     val orderDetailKafkaDStream: InputDStream[ConsumerRecord[String, String]] = MyKafkaUtil.getKafkaDStream(Set(GmallConstants.ORDER_DETAIL), ssc)
-    val userInfoKafkaDStream: InputDStream[ConsumerRecord[String, String]] = MyKafkaUtil.getKafkaDStream(Set(GmallConstants.USER_INFO), ssc)
 
     //3.转换为样例类
     val orderInfoDStream: DStream[OrderInfo] = orderInfoKafkaDStream.map(record => {
@@ -53,9 +54,11 @@ object SaleDetailApp {
       JSON.parseObject(record.value(), classOf[OrderDetail])
     })
 
-    val userInfoDStream: DStream[UserInfo] = userInfoKafkaDStream.map(record => {
-      JSON.parseObject(record.value(), classOf[UserInfo])
-    })
+    //普通JOIN
+    //    val value: DStream[SaleDetail] = orderIdToInfoDStream.join(orderIdToDetailDStream).map {
+    //      case (_, (orderInfo, orderDetail)) =>
+    //        new SaleDetail(orderInfo, orderDetail)
+    //    }
 
     //4.将OrderInfo和OrderDetail进行FULLJOIN
     val orderIdToInfoDStream: DStream[(String, OrderInfo)] = orderInfoDStream.map(orderInfo => (orderInfo.id, orderInfo))
@@ -141,20 +144,55 @@ object SaleDetailApp {
       saleDetails.toIterator
     })
 
-    //普通JOIN
-    //    val value: DStream[SaleDetail] = orderIdToInfoDStream.join(orderIdToDetailDStream).map {
-    //      case (_, (orderInfo, orderDetail)) =>
-    //        new SaleDetail(orderInfo, orderDetail)
-    //    }
+    //6.根据UID查询Redis补全用户信息
+    val saleDetailDStream: DStream[SaleDetail] = noUserSaleDetailDStream.mapPartitions(iter => {
 
-    noUserSaleDetailDStream.print(100)
+      //a.获取Redis连接
+      val jedisClient: Jedis = RedisUtil.getJedisClient
+
+      //b.遍历iter,查询Redis,补全用户信息
+      val details: Iterator[SaleDetail] = iter.map(noUserSaleDetail => {
+        //RedisKey
+        val userKey = s"user:${noUserSaleDetail.user_id}"
+        //查询Redis中的用户信息
+        val userStr: String = jedisClient.get(userKey)
+        //将用户转换为样例类对象
+        val userInfo: UserInfo = JSON.parseObject(userStr, classOf[UserInfo])
+        //补全用户信息
+        noUserSaleDetail.mergeUserInfo(userInfo)
+        //返回数据
+        noUserSaleDetail
+      })
+
+      //c.归还连接
+      jedisClient.close()
+
+      //d.返回结果
+      details
+    })
 
     //打印测试
     //    orderInfoDStream.print()
     //    orderDetailDStream.print()
-    //    userInfoDStream.print()
+    //    saleDetailDStream.print(100)
 
-    //开启任务
+    //7.将JOIN之后的数据写入ES
+    val sdf = new SimpleDateFormat("yyyy-MM-dd")
+    saleDetailDStream.foreachRDD(rdd => {
+      rdd.foreachPartition(iter => {
+        val date: String = sdf.format(new Date(System.currentTimeMillis()))
+
+        //将订单id及订单明细id作为doc_id
+        val idToSaleDetail: Iterator[(String, SaleDetail)] = iter.map(saleDetail =>
+          (s"${saleDetail.order_id}-${saleDetail.order_detail_id}", saleDetail)
+        )
+
+        //批量写入ES
+        MyEsUtil.insertBulk(s"${GmallConstants.ES_SALE_DETAIL_PRE}_$date", idToSaleDetail.toList)
+      })
+    })
+
+    //8.开启任务
     ssc.start()
     ssc.awaitTermination()
 
