@@ -19,4 +19,7 @@ public class GmallConstants {
 
     //预警日志ES索引前缀
     public static final String ES_ALERT_INFO_PRE = "gmall_coupon_alert";
+
+    //灵活分析需求ES索引前缀
+    public static final String ES_SALE_DETAIL_PRE = "gmall200213_sale_detail";
 }
