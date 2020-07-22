@@ -67,13 +67,10 @@ object AlertApp {
 
       breakable(
         logIter.foreach(log => {
-
           //获取事件类型
           val evid: String = log.evid
-
           //将事件类型添加至集合
           events.add(evid)
-
           //如果为点击行为,则跳出当前循环
           if ("clickItem".equals(evid)) {
             noClick = false

@@ -12,6 +12,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 
 import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.Random;
 
 public class CanalClient {
 
@@ -79,25 +80,41 @@ public class CanalClient {
 
     //根据表名以及eventType,处理rowDatasList
     private static void handler(String tableName, CanalEntry.EventType eventType, List<CanalEntry.RowData> rowDatasList) {
-
         //订单表，新增数据
         if ("order_info".equals(tableName) && CanalEntry.EventType.INSERT.equals(eventType)) {
 
-            for (CanalEntry.RowData rowData : rowDatasList) {
+            sendToKafka(GmallConstants.ORDER_INFO, rowDatasList);
 
-                //创建JSONObject用于存放单条数据
-                JSONObject result = new JSONObject();
+            //订单详情表,新增数据
+        } else if ("order_detail".equals(tableName) && CanalEntry.EventType.INSERT.equals(eventType)) {
 
-                //将列名和列值放入JSONObject
-                for (CanalEntry.Column column : rowData.getAfterColumnsList()) {
-                    result.put(column.getName(), column.getValue());
-                }
+            sendToKafka(GmallConstants.ORDER_DETAIL, rowDatasList);
 
-                //单条数据打印并发送至Kafka
-                String msg = result.toString();
-                System.out.println(msg);
-                MyKafkaSender.send(GmallConstants.ORDER_INFO, msg);
+            //用户表,新增及变化数据
+        } else if ("user_info".equals(tableName) && (CanalEntry.EventType.INSERT.equals(eventType) || CanalEntry.EventType.UPDATE.equals(eventType))) {
+
+            sendToKafka(GmallConstants.USER_INFO, rowDatasList);
+
+        }
+    }
+
+    private static void sendToKafka(String topic, List<CanalEntry.RowData> rowDatasList) {
+        for (CanalEntry.RowData rowData : rowDatasList) {
+            //创建JSONObject用于存放单条数据
+            JSONObject result = new JSONObject();
+            //将列名和列值放入JSONObject
+            for (CanalEntry.Column column : rowData.getAfterColumnsList()) {
+                result.put(column.getName(), column.getValue());
             }
+            //单条数据打印并发送至Kafka
+            String msg = result.toString();
+            try {
+                Thread.sleep(new Random().nextInt(5) * 1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println(msg);
+            MyKafkaSender.send(topic, msg);
         }
     }
 
