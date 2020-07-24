@@ -1,6 +1,10 @@
 package com.atguigu.gmallpulisher.controller;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.atguigu.gmallpulisher.bean.Option;
+import com.atguigu.gmallpulisher.bean.SaleInfo;
+import com.atguigu.gmallpulisher.bean.Stat;
 import com.atguigu.gmallpulisher.service.PublisherService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -79,7 +84,7 @@ public class PublisherController {
             todayMap = publisherService.getOrderAmountHourMap(date);
             //2.获取昨天的分时统计数据
             yesterdayMap = publisherService.getOrderAmountHourMap(yesterday);
-        }else if("new_mid".equals(id)){
+        } else if ("new_mid".equals(id)) {
             todayMap = new HashMap();
             todayMap.put("05", 50);
             todayMap.put("08", 150);
@@ -97,6 +102,82 @@ public class PublisherController {
 
         //返回结果
         return JSONObject.toJSONString(result);
+    }
+
+    @RequestMapping("sale_detail")
+    public String getSaleDetail(@RequestParam("date") String date,
+                                @RequestParam("startpage") int startpage,
+                                @RequestParam("size") int size,
+                                @RequestParam("keyword") String keyword) {
+
+        //定义Map用于存放最终返回值
+        HashMap<String, Object> result = new HashMap<>();
+
+        //查询ES中的数据
+        Map saleMap = publisherService.getSaleDetail(date, startpage, size, keyword);
+
+        Long total = (Long) saleMap.get("total");
+
+        List<Map> saleDetailList = (List) saleMap.get("detail");
+        Map ageMap = (Map) saleMap.get("ageMap");
+        Map genderMap = (Map) saleMap.get("genderMap");
+
+        //  genderMap 整理成为  OptionGroup
+        Long femaleCount = (Long) genderMap.get("F");
+        Long maleCount = (Long) genderMap.get("M");
+
+        double femaleRate = Math.round(femaleCount * 1000D / total) / 10D;
+        double maleRate = Math.round(maleCount * 1000D / total) / 10D;
+
+        List<Option> genderOptions = new ArrayList<>();
+        genderOptions.add(new Option("男", maleRate));
+        genderOptions.add(new Option("女", femaleRate));
+
+        Stat genderOptionGroup = new Stat("性别占比", genderOptions);
+
+        //  ageMap 整理成为  OptionGroup
+        Long age_20Count = 0L;
+        Long age20_30Count = 0L;
+        Long age30_Count = 0L;
+
+        for (Object o : ageMap.entrySet()) {
+            Map.Entry entry = (Map.Entry) o;
+            String agekey = (String) entry.getKey();
+            int age = Integer.parseInt(agekey);
+            Long ageCount = (Long) entry.getValue();
+
+            if (age < 20) {
+                age_20Count += ageCount;
+            } else if (age < 30) {
+                age20_30Count += ageCount;
+            } else {
+                age30_Count += ageCount;
+            }
+        }
+
+        Double age_20rate = 0D;
+        Double age20_30rate = 0D;
+        Double age30_rate = 0D;
+
+        age_20rate = Math.round(age_20Count * 1000D / total) / 10D;
+        age20_30rate = Math.round(age20_30Count * 1000D / total) / 10D;
+        age30_rate = Math.round(age30_Count * 1000D / total) / 10D;
+
+        List<Option> ageOptions = new ArrayList<>();
+        ageOptions.add(new Option("20岁以下", age_20rate));
+        ageOptions.add(new Option("20岁到30岁", age20_30rate));
+        ageOptions.add(new Option("30岁以上", age30_rate));
+        Stat ageOptionGroup = new Stat("年龄占比", ageOptions);
+
+        List<Stat> optionGroupList = new ArrayList<>();
+        optionGroupList.add(ageOptionGroup);
+        optionGroupList.add(genderOptionGroup);
+
+        result.put("total", total);
+        result.put("stat", optionGroupList);
+        result.put("detail", saleDetailList);
+
+        return JSON.toJSONString(result);
     }
 
 }

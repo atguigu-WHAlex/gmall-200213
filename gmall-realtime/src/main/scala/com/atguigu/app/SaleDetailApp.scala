@@ -68,7 +68,6 @@ object SaleDetailApp {
 
     //5.处理JOIN后的数据
     val noUserSaleDetailDStream: DStream[SaleDetail] = orderInToInfoAndDetailDStream.mapPartitions(iter => {
-
       //a.获取Redis连接
       val jedisClient: Jedis = RedisUtil.getJedisClient
       //创建集合用于存放JOIN上的数据

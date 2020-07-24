@@ -16,4 +16,6 @@ public interface PublisherService {
 
     //获取GMV分时统计结果
     public Map getOrderAmountHourMap(String date);
+
+    public Map getSaleDetail(String date, int startpage, int size, String keyword);
 }
