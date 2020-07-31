@@ -8,10 +8,12 @@ import com.atguigu.GmallConstants
 import com.atguigu.bean.StartUpLog
 import com.atguigu.handler.DauHandler
 import com.atguigu.utils.MyKafkaUtil
+import org.apache.hadoop.hbase.HBaseConfiguration
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.spark.SparkConf
 import org.apache.spark.streaming.dstream.{DStream, InputDStream}
 import org.apache.spark.streaming.{Seconds, StreamingContext}
+import org.apache.phoenix.spark._
 
 object DauApp {
 
@@ -52,24 +54,38 @@ object DauApp {
       startUpLog
     }
 
-    startUpLogDStream.cache()
-    startUpLogDStream.count().print()
+    //去重之前的数据条数打印
+    //    startUpLogDStream.cache()
+    //    startUpLogDStream.count().print()
 
     //5.去重1--->根据Redis做跨批次去重
-    val filteredByRedisLogDStream: DStream[StartUpLog] = DauHandler.filterByRedis(startUpLogDStream,ssc)
+    val filteredByRedisLogDStream: DStream[StartUpLog] = DauHandler.filterByRedis(startUpLogDStream, ssc)
 
-    filteredByRedisLogDStream.cache()
-    filteredByRedisLogDStream.count().print()
+    //第一次去重之后的数据条数打印
+    //    filteredByRedisLogDStream.cache()
+    //    filteredByRedisLogDStream.count().print()
 
-    //6.去重2--->根据Mid做同批次去重
+    //6.去重2--->根据Mid_date做同批次去重
+    val filteredByGroupDStream: DStream[StartUpLog] = DauHandler.filterByGroup(filteredByRedisLogDStream)
+
+    //第二次去重之后的数据条数打印
+    //    filteredByGroupDStream.cache()
+    //    filteredByGroupDStream.count().print()
 
     //7.将两次去重之后的Mid及日期写入Redis,提供给当天以后的批次做去重用
-    DauHandler.saveDateAndMidToRedis(filteredByRedisLogDStream)
+    DauHandler.saveDateAndMidToRedis(filteredByGroupDStream)
 
     //8.数据写入HBase(Phoenix)
+    filteredByGroupDStream.cache()
+    filteredByGroupDStream.foreachRDD(rdd => {
+      rdd.saveToPhoenix("GMALL200213_DAU",
+        classOf[StartUpLog].getDeclaredFields.map(_.getName.toUpperCase()),
+        HBaseConfiguration.create(),
+        Some("hadoop102,hadoop103,hadoop104:2181"))
+    })
 
     //打印
-    //startUpLogDStream.print()
+    filteredByGroupDStream.print()
 
     //开启任务
     ssc.start()
